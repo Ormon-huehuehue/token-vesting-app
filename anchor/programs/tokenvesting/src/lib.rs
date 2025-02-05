@@ -1,7 +1,7 @@
 #![allow(clippy::result_large_err)]
 
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, TokenAccount, TokenInterface}};
+use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, TokenAccount, TokenInterface, TransferChecked}};
 
 declare_id!("coUnmi3oBUtwtd9fjeAvSsJssXh5A5xyPbhpewyzRVF");
 
@@ -16,7 +16,7 @@ pub mod tokenvesting {
         mint: ctx.accounts.mint.key() ,
         treasury_token_account : ctx.accounts.treasury_token_account.key(),
         company_name,
-        treasury_bump : ctx.bumps.treasury_token_account, 
+        treasury_bump : ctx.bumps.treasury_token_account,
         bump : ctx.bumps.vesting_account
       };
 
@@ -42,6 +42,46 @@ pub mod tokenvesting {
 
     pub fn claim_tokens( ctx : Context<ClaimTokens>, company_name : String) -> Result<()> {
 
+      let employee_account = &mut ctx.accounts.employee_account;
+
+      let now = Clock::get()?.unix_timestamp;
+
+      if now < employee_account.cliff_time {
+        return Err(ErrorCode::ClaimNotAvailableYet.into())
+      }
+
+      let time_since_start = now.saturating_sub(employee_account.start_time);
+      let total_vesting_time = employee_account.end_time.saturating_sub(employee_account.start_time);
+
+      if total_vesting_time == 0 {
+        return Err(ErrorCode::InvalidVestingPeriod.into());
+      }
+
+      let vested_amount = if now >= employee_account.end_time {
+        employee_account.total_amount
+      } else{
+        match employee_account.total_amount.checked_mul(time_since_start as u64){
+          Some(product) => product / total_vesting_time as u64,
+          None => {
+            return Err(ErrorCode::CalculationOverflow.into())
+          }
+        }
+      };
+
+      let claimable_amount = vested_amount.saturating_sub(employee_account.total_withdrawn);
+
+      if claimable_amount == 0 {
+        return Err(ErrorCode::NothingToClaim.into())
+      }
+
+      let transfer_cpi_accounts = TransferChecked{
+        from : ctx.accounts.treasury_token_account.to_account_info(),
+        mint : ctx.accounts.mint.to_account_info(),
+        to : ctx.accounts.employee_token_account.to_account_info(),
+        authority : ctx.accounts.vesting_account.to_account_info(),
+      };
+      
+
 
       Ok(())
     }
@@ -50,7 +90,7 @@ pub mod tokenvesting {
 
 
 #[derive(Accounts)]
-#[instruction(company_name : String)] 
+#[instruction(company_name : String)]
 pub struct CreateVestingAccount<'info>{
   #[account(mut)]
   pub signer : Signer<'info>,
@@ -107,7 +147,7 @@ pub struct CreateEmployeeAccount<'info>{
   pub vesting_account : Account<'info, VestingAccount>,
 
   #[account(
-    init, 
+    init,
     space = 8 + EmployeeAccount::INIT_SPACE,
     payer = owner,
     seeds = [b"employee_vesting",beneficiary.key().as_ref(), vesting_account.key().as_ref()],
@@ -115,7 +155,7 @@ pub struct CreateEmployeeAccount<'info>{
   )]
   pub employee_account : Account<'info, EmployeeAccount>,
 
-  pub system_program : Program<'info, System> 
+  pub system_program : Program<'info, System>
 
 }
 
@@ -176,3 +216,19 @@ pub struct ClaimTokens<'info>{
   pub associated_token_program : Program<'info, AssociatedToken>
 }
 
+
+
+#[error_code]
+pub enum ErrorCode{
+  #[msg("Claim not available yet")]
+  ClaimNotAvailableYet,
+
+  #[msg("Invalid vesting period")]
+  InvalidVestingPeriod,
+
+  #[msg("Calculation Overflow")]
+  CalculationOverflow,
+
+  #[msg("Nothing to claim")]
+  NothingToClaim,
+}
