@@ -7,6 +7,8 @@ declare_id!("coUnmi3oBUtwtd9fjeAvSsJssXh5A5xyPbhpewyzRVF");
 
 #[program]
 pub mod tokenvesting {
+    use anchor_spl::token_interface;
+
     use super::*;
 
     pub fn create_vesting_account(ctx : Context<CreateVestingAccount>, company_name : String) -> Result<()>{
@@ -40,7 +42,7 @@ pub mod tokenvesting {
     }
 
 
-    pub fn claim_tokens( ctx : Context<ClaimTokens>, company_name : String) -> Result<()> {
+    pub fn claim_tokens( ctx : Context<ClaimTokens>, _company_name : String) -> Result<()> {
 
       let employee_account = &mut ctx.accounts.employee_account;
 
@@ -76,18 +78,42 @@ pub mod tokenvesting {
 
       let transfer_cpi_accounts = TransferChecked{
         from : ctx.accounts.treasury_token_account.to_account_info(),
-        mint : ctx.accounts.mint.to_account_info(),
         to : ctx.accounts.employee_token_account.to_account_info(),
+        mint : ctx.accounts.mint.to_account_info(),
         authority : ctx.accounts.vesting_account.to_account_info(),
       };
-      
 
+      let cpi_program = ctx.accounts.token_program.to_account_info();
+
+      let signer_seeds : &[&[&[u8]]] = &[
+        &[b"vesting_treasury",
+        ctx.accounts.vesting_account.company_name.as_bytes(),
+        &[ctx.accounts.vesting_account.treasury_bump]]
+      ];
+
+      let cpi_context = CpiContext::new(cpi_program, transfer_cpi_accounts).with_signer(signer_seeds);
+
+      let decimals = ctx.accounts.mint.decimals;
+
+      // transfer_checked ( context, amount, decimals ) ?;   -> The "?;" at the end makes sure that if the function returns an error, the program will return an error.
+
+      token_interface::transfer_checked(cpi_context, claimable_amount, decimals)?;
+
+
+      employee_account.total_withdrawn += claimable_amount;
 
       Ok(())
+
     }
 
 }
 
+
+
+
+
+
+// VESTING ACCOUNT STUFF
 
 #[derive(Accounts)]
 #[instruction(company_name : String)]
@@ -134,6 +160,11 @@ pub struct VestingAccount{
 }
 
 
+
+
+
+// EMPLOYEE ACCOUNT STUFF
+
 #[derive(Accounts)]
 #[instruction(start_time : i64, end_time : i64, cliff_time : i64, total_amount : u64)]
 pub struct CreateEmployeeAccount<'info>{
@@ -172,6 +203,10 @@ pub struct EmployeeAccount{
   bump : u8
 }
 
+
+
+
+// CLAIM TOKENS STUFFS
 
 #[derive(Accounts)]
 #[instruction(company_name : String)]
