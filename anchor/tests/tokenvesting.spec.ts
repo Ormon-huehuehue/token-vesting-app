@@ -2,7 +2,7 @@ import * as anchor from '@coral-xyz/anchor'
 import {Program} from '@coral-xyz/anchor'
 import {Keypair, PublicKey} from '@solana/web3.js'
 import {Tokenvesting} from '../target/types/tokenvesting'
-import { BanksClient, ProgramTestContext, startAnchor } from 'solana-bankrun'
+import { BanksClient, Clock, ProgramTestContext, startAnchor } from 'solana-bankrun'
 import { BankrunProvider } from 'anchor-bankrun'
 import { SYSTEM_PROGRAM_ID } from '@coral-xyz/anchor/dist/cjs/native/system'
 
@@ -140,7 +140,7 @@ describe('Vesting Smart Contract tests', () => {
       .createEmployeeAccount(
         new anchor.BN(0),
         new anchor.BN(100),
-        new anchor.BN(100),
+        new anchor.BN(1),
         new anchor.BN(0)
       )
       .accounts({
@@ -157,6 +157,32 @@ describe('Vesting Smart Contract tests', () => {
   })
 
 
+  it("claim the employee's vested tokens", async()=>{
+
+    await new Promise((resolve)=> setTimeout(resolve,2000));
+
+    const currentClock = await banksClient.getClock();
+
+    context.setClock(
+      new Clock(
+        currentClock.slot,
+        currentClock.epochStartTimestamp,
+        currentClock.epoch,
+        currentClock.leaderScheduleEpoch,
+        //@ts-expect-error bigint shit
+        1000n
+      )
+    )
 
 
+    const tx3 = await program2.methods
+      .claimTokens(companyName)
+      .accounts({
+        tokenProgram : TOKEN_PROGRAM_ID
+      })
+      .rpc({ commitment : 'confirmed'})
+
+    console.log("Claim tokens successfully ran : ", tx3);
+
+  })
 })
