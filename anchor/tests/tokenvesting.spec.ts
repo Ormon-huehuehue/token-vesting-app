@@ -6,12 +6,13 @@ import { BanksClient, ProgramTestContext, startAnchor } from 'solana-bankrun'
 import { BankrunProvider } from 'anchor-bankrun'
 import { SYSTEM_PROGRAM_ID } from '@coral-xyz/anchor/dist/cjs/native/system'
 
+//@ts-expect-error Type error in spl-token-bankrun dependency
+import { createMint } from 'spl-token-bankrun'
 
 // const IDL = require("../target/idl/tokenvesting.json")
 import IDL from "../target/idl/tokenvesting.json"
-import { createMint } from '@solana/spl-token'
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet'
-// import { createMint } from 'spl-token-bankrun'
 
 
 describe('Vesting Smart Contract tests', () => {
@@ -66,7 +67,6 @@ describe('Vesting Smart Contract tests', () => {
     employer = provider.wallet.payer;
 
     mint = await createMint(
-      //@ts-expect-error - Type mismatch in spl-token dependency
       banksClient,            // connection
       employer,               // payer
       employer.publicKey,     // mint authority 
@@ -99,9 +99,28 @@ describe('Vesting Smart Contract tests', () => {
       ],
       program.programId
     );
-    
-    
+  })
 
+
+  it("create a vesting account", async ()=>{
+    const tx = await program.methods
+      .createVestingAccount(companyName)
+      .accounts({
+        signer : employer.publicKey,
+        mint,
+        tokenProgram : TOKEN_PROGRAM_ID
+      }).rpc({commitment : 'confirmed'})
+
+      const vestedAccountData = await program.account.vestingAccount.fetch(vestingAccountKey)
+
+      if(vestedAccountData){
+        console.log("Vested account : ", vestedAccountData);
+        console.log("Created vesting account successfully")
+      }
 
   })
+
+
+
+
 })
