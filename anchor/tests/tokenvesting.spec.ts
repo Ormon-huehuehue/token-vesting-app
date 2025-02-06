@@ -7,7 +7,7 @@ import { BankrunProvider } from 'anchor-bankrun'
 import { SYSTEM_PROGRAM_ID } from '@coral-xyz/anchor/dist/cjs/native/system'
 
 //@ts-expect-error Type error in spl-token-bankrun dependency
-import { createMint } from 'spl-token-bankrun'
+import { createMint, mintTo } from 'spl-token-bankrun'
 
 // const IDL = require("../target/idl/tokenvesting.json")
 import IDL from "../target/idl/tokenvesting.json"
@@ -115,8 +115,44 @@ describe('Vesting Smart Contract tests', () => {
 
       if(vestedAccountData){
         console.log("Vested account : ", vestedAccountData);
-        console.log("Created vesting account successfully")
+        console.log("Created vesting account successfully : ", tx)
       }
+  })
+
+
+  it("fund the treasury_token_account", async ()=>{
+    const amount = 10000 * 10**9;
+    const mintTx = await mintTo(
+      banksClient,
+      employer,
+      mint,
+      treasuryTokenAccount,
+      employer,
+      amount
+    );
+
+    console.log("Funded the treasury token account : ", mintTx);
+  })
+
+
+  it("create an employee vesting account" , async()=>{
+    const tx2 = await program.methods
+      .createEmployeeAccount(
+        new anchor.BN(0),
+        new anchor.BN(100),
+        new anchor.BN(100),
+        new anchor.BN(0)
+      )
+      .accounts({
+        beneficiary : beneficiary.publicKey,
+        vestingAccount : vestingAccountKey
+      })
+      .rpc( { commitment : 'confirmed' , skipPreflight : true});
+
+
+      console.log("Created an employee account : ", tx2);
+
+      console.log("Employee account : ", employeeAccount.toBase58());
 
   })
 
